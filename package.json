@@ -13,7 +13,8 @@
     "dev:frontend": "FORCE_COLOR=true concurrently -n \"GUI,API,ENG\" -c \"bgBlue.bold,bgGreen.bold,bgRed.bold\" \"npm:serve:frontend\" \"npm:serve:backend\" \"npm:serve:engine\"",
     "start": "npm i && npm run dev",
     "publish-piece": "npx ts-node tools/scripts/utils/publish-piece.ts",
-    "create-piece": "npx ts-node tools/scripts/generate-new-piece.ts"
+    "create-piece": "npx ts-node tools/scripts/generate-new-piece.ts",
+    "excel-bot": "npx ts-node tools/scripts/excel-bot.ts"
   },
   "private": true,
   "dependencies": {
@@ -155,6 +156,7 @@
     "tslib": "2.6.2",
     "twitter-api-v2": "1.15.1",
     "typeorm": "0.3.17",
+    "xlsx": "^0.18.5",
     "xml2js": "0.6.2",
     "zone.js": "0.13.1"
   },
