@@ -74,6 +74,9 @@ import { domainHelper } from './helper/domain-helper'
 import { platformDomainHelper } from './ee/helper/platform-domain-helper'
 import { enterpriseUserModule } from './ee/user/enterprise-user-module'
 import { flowResponseWatcher } from './flows/flow-run/flow-response-watcher'
+import { subjectModule } from './education/subject/subject.module'
+import { questionModule } from './education/question/question.module'
+import { examModule } from './education/exam/exam.module'
 
 export const setupApp = async (): Promise<FastifyInstance> => {
     const app = fastify({
@@ -180,6 +183,9 @@ export const setupApp = async (): Promise<FastifyInstance> => {
     await app.register(stepFileModule)
     await app.register(userModule)
     await app.register(authenticationModule)
+    await app.register(subjectModule)
+    await app.register(questionModule)
+    await app.register(examModule)
 
     await setupBullMQBoard(app)
 

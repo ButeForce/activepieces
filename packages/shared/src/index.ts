@@ -54,3 +54,9 @@ export * from './lib/flows/dto/update-flow-status-request'
 // Look at https://github.com/sinclairzx81/typebox/issues/350
 TypeSystem.ExactOptionalPropertyTypes = false
 export * from './lib/support-url'
+// Education (Tawjihi) domain exports
+export * from './lib/education/difficulty'
+export * from './lib/education/subject'
+export * from './lib/education/question'
+export * from './lib/education/exam'
+export * from './lib/education/student-profile'

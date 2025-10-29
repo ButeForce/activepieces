@@ -34,6 +34,11 @@ import { OAuthAppEntity } from '../ee/oauth-apps/oauth-app.entity'
 import { ProjectPlanEntity } from '../ee/billing/project-plan/project-plan.entity'
 import { OtpEntity } from '../ee/otp/otp-entity'
 import { ApiKeyEntity } from '../ee/api-keys/api-key-entity'
+import { SubjectEntity } from '../education/subject/subject.entity'
+import { QuestionEntity } from '../education/question/question.entity'
+import { ExamEntity } from '../education/exam/exam.entity'
+import { ExamQuestionEntity } from '../education/exam/exam-question.entity'
+import { StudentProfileEntity } from '../education/student/student-profile.entity'
 
 const databaseType = system.get(SystemProp.DB_TYPE)
 
@@ -56,6 +61,11 @@ function getEntities(): EntitySchema<unknown>[] {
         FolderEntity,
         PieceMetadataEntity,
         StepFileEntity,
+        SubjectEntity,
+        QuestionEntity,
+        ExamEntity,
+        ExamQuestionEntity,
+        StudentProfileEntity,
     ]
 
     switch (edition) {
