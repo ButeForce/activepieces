@@ -3,6 +3,13 @@ import { ApId, GenerateExamRequest, PrincipalType, SubmitExamRequest } from '@ac
 import { examService } from './exam.service'
 
 export const examController: FastifyPluginCallbackTypebox = (app, _opts, done) => {
+  // Register static route before parameterized routes to avoid conflicts
+  app.get('/me/dashboard', DashboardRoute, async (request) => {
+    const studentId = request.principal.id
+    const { projectId, limitRecent } = request.query
+    return examService.dashboard({ projectId, studentId, limitRecent })
+  })
+
   app.post('/', GenerateExamRoute, async (request) => {
     const studentId = request.principal.id
     const { projectId, subjectId, difficulty, numQuestions } = request.body
@@ -19,12 +26,6 @@ export const examController: FastifyPluginCallbackTypebox = (app, _opts, done) =
     const studentId = request.principal.id
     const { projectId } = request.query
     return examService.submit({ projectId, studentId, examId: request.params.id, answers: request.body.answers })
-  })
-
-  app.get('/me/dashboard', DashboardRoute, async (request) => {
-    const studentId = request.principal.id
-    const { projectId, limitRecent } = request.query
-    return examService.dashboard({ projectId, studentId, limitRecent })
   })
 
   done()
