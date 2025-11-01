@@ -1,0 +1,197 @@
+{
+  "name": "Cyber SA Chat (Arabic RAG via Qdrant)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "cyber-sa/chat",
+        "responseMode": "onLastNode",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 260]
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "function normalizeArabic(input) {\n  if (!input) return '';\n  let s = String(input);\n  s = s.replace(/[\u064B-\u0652]/g, '');\n  s = s.replace(/\u0640/g, '');\n  s = s.replace(/[???]/g, '?');\n  s = s.replace(/?/g, '?');\n  s = s.replace(/\s+/g, ' ').trim();\n  return s;\n}\n\nconst q = items[0].json.question || items[0].json.q || items[0].json.text || '';\nreturn [{ json: { question: q, normalizedQuestion: normalizeArabic(q) } }];"
+      },
+      "id": "2",
+      "name": "Normalize Question (AR)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 260]
+    },
+    {
+      "parameters": {
+        "operation": "createEmbedding",
+        "text": "={{$json.normalizedQuestion}}",
+        "model": "text-embedding-3-small"
+      },
+      "id": "3",
+      "name": "OpenAI Embeddings",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "position": [720, 260],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api-credential",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "const out = [];\nfor (const item of items) {\n  const data = item.json.data || item.json.embedding || [];\n  let embedding = [];\n  if (Array.isArray(data) && data[0] && data[0].embedding) {\n    embedding = data[0].embedding;\n  } else if (Array.isArray(item.json.embedding)) {\n    embedding = item.json.embedding;\n  }\n  out.push({ json: { ...item.json, embedding } });\n}\nreturn out;"
+      },
+      "id": "4",
+      "name": "Extract Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 260]
+    },
+    {
+      "parameters": {
+        "authentication": "none",
+        "requestMethod": "POST",
+        "url": "http://qdrant:6333/collections/cyber-sa/points/search",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"vector\": {{$json.embedding}},\n  \"limit\": 6\n}"
+      },
+      "id": "5",
+      "name": "Qdrant Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1240, 260]
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "const res = items[0].json.result || items[0].json;\nconst hits = Array.isArray(res) ? res : (res && res.points) ? res.points : [];\nconst contexts = hits.map(h => `? ${h.payload?.text || ''}`.trim()).filter(Boolean).join('\n');\nreturn [{ json: { contexts, question: items[0].json.question } }];"
+      },
+      "id": "6",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 260]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "mode": "complete",
+        "systemMessage": "??? ????? ???? ???? ???????? ??? ????? ??? ??????? ?????? ????? ????????? ?? ???????? ???.\n- ??? ???????? ?????? ???????.\n- ?? ???? ???????? ??? ?????? ?? ??????? ???????? ???? ??? ??????.\n- ?? ??? ??????? ?? ???? ???????.\n- ?? ??? ?????? ??? ????? ????????? ????? ????? ?? ???????? ?????? ???????.\n\n?????? (???????):\n{{$json.contexts}}",
+        "prompt": "={{$json.question}}",
+        "temperature": 0.2
+      },
+      "id": "7",
+      "name": "OpenAI Chat (AR)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "position": [1760, 260],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api-credential",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "responseBody": "={{$json.choices && $json.choices[0] && $json.choices[0].message ? $json.choices[0].message.content : ($json.text || '?? ????? ????? ??????.')}}",
+        "responseCode": 200
+      },
+      "id": "8",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2020, 260]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Question (AR)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Question (AR)": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Extract Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Embedding": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Search": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat (AR)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat (AR)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "workflowVersion": 1
+  }
+}

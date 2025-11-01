@@ -1,0 +1,185 @@
+{
+  "name": "Cyber SA Ingestion (Arabic Excel ? Qdrant)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "filePath": "/data/cyber-sa.xlsx",
+        "binaryPropertyName": "data"
+      },
+      "id": "2",
+      "name": "Read Binary File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "binaryPropertyName": "data",
+        "options": {
+          "headerRow": true
+        }
+      },
+      "id": "3",
+      "name": "Spreadsheet File",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 4,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "const TEXT_COLUMNS = [\n  '?????????',\n  '??????',\n  '????? ??????',\n  '??? ?????? ?????? ?? ??????? (ECC Subdomain)',\n  '??? ?????? ??????? - ??????',\n  '????? ????? ????? ?????',\n  '????? ?????? ????? ????? ??? ????? ?????????',\n  '????? ?????? ????? ????? ??? ????? ??????',\n  '??????',\n  '??? ????? ?????? ?? ?????',\n  '????? ??????? (??????? ??????)',\n  '???????'\n];\n\nconst CHUNK_SIZE = 1200;\nconst CHUNK_OVERLAP = 150;\n\nfunction normalizeArabic(input) {\n  if (!input) return '';\n  let s = String(input);\n  s = s.replace(/[\u064B-\u0652]/g, ''); // diacritics\n  s = s.replace(/\u0640/g, ''); // tatweel\n  s = s.replace(/[???]/g, '?'); // alef\n  s = s.replace(/?/g, '?'); // yaa\n  s = s.replace(/\s+/g, ' ').trim();\n  return s;\n}\n\nfunction detectType(row) {\n  if (row['????? ??????']) return 'evidence';\n  if (row['??????']) return 'mechanism';\n  if (row['?????????']) return 'prerequisite';\n  return 'row';\n}\n\nfunction buildDocument(row, index) {\n  const parts = [];\n  for (const col of TEXT_COLUMNS) {\n    const value = row[col];\n    if (value !== undefined && value !== null && String(value).trim() !== '') {\n      parts.push(normalizeArabic(value));\n    }\n  }\n  const text = parts.join(' | ');\n  return {\n    text,\n    meta: {\n      rowIndex: index,\n      type: detectType(row),\n      eccSubdomain: normalizeArabic(row['??? ?????? ?????? ?? ??????? (ECC Subdomain)'] || ''),\n      controlCode: normalizeArabic(row['??? ?????? ??????? - ??????'] || '')\n    }\n  };\n}\n\nfunction chunkText(text, size, overlap) {\n  const chunks = [];\n  let start = 0;\n  while (start < text.length) {\n    const end = Math.min(start + size, text.length);\n    const chunk = text.slice(start, end);\n    if (chunk.trim().length > 0) chunks.push(chunk);\n    if (end === text.length) break;\n    start = Math.max(0, end - overlap);\n  }\n  return chunks;\n}\n\nconst output = [];\nitems.forEach((item, idx) => {\n  const row = item.json;\n  const doc = buildDocument(row, idx);\n  if (!doc.text) return;\n  const chunks = chunkText(doc.text, CHUNK_SIZE, CHUNK_OVERLAP);\n  chunks.forEach((chunk, cidx) => {\n    output.push({\n      json: {\n        text: chunk,\n        metadata: { ...doc.meta, chunkIndex: cidx }\n      }\n    });\n  });\n});\n\nreturn output;"
+      },
+      "id": "4",
+      "name": "Normalize + Chunk (AR)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 200]
+    },
+    {
+      "parameters": {
+        "operation": "createEmbedding",
+        "text": "={{$json.text}}",
+        "model": "text-embedding-3-small"
+      },
+      "id": "5",
+      "name": "OpenAI Embeddings",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "position": [1240, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api-credential",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "JavaScript",
+        "jsCode": "// Map OpenAI embeddings output -> json.embedding\nconst out = [];\nfor (const item of items) {\n  const data = item.json.data || item.json.embedding || [];\n  let embedding = [];\n  if (Array.isArray(data) && data[0] && data[0].embedding) {\n    embedding = data[0].embedding;\n  } else if (Array.isArray(item.json.embedding)) {\n    embedding = item.json.embedding;\n  }\n  out.push({ json: { ...item.json, embedding } });\n}\nreturn out;"
+      },
+      "id": "6",
+      "name": "Extract Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "none",
+        "requestMethod": "POST",
+        "url": "http://qdrant:6333/collections/cyber-sa",
+        "jsonParameters": true,
+        "options": {
+          "ignoreResponseCode": true
+        },
+        "bodyParametersJson": "={\n  \"vectors\": { \n    \"size\": {{$json.embedding.length}}, \n    \"distance\": \"Cosine\" \n  }\n}"
+      },
+      "id": "7",
+      "name": "Ensure Collection (Qdrant)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1760, 120]
+    },
+    {
+      "parameters": {
+        "authentication": "none",
+        "requestMethod": "POST",
+        "url": "http://qdrant:6333/collections/cyber-sa/points",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"points\": [\n    {\n      \"id\": \"={{$json.metadata.type + '-' + $json.metadata.rowIndex + '-' + $json.metadata.chunkIndex}}\",\n      \"vector\": {{$json.embedding}},\n      \"payload\": {\n        \"text\": \"={{$json.text}}\",\n        \"type\": \"={{$json.metadata.type}}\",\n        \"rowIndex\": {{$json.metadata.rowIndex}},\n        \"chunkIndex\": {{$json.metadata.chunkIndex}},\n        \"eccSubdomain\": \"={{$json.metadata.eccSubdomain}}\",\n        \"controlCode\": \"={{$json.metadata.controlCode}}\"\n      }\n    }\n  ]\n}"
+      },
+      "id": "8",
+      "name": "Upsert to Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1760, 280]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Binary File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Binary File": {
+      "main": [
+        [
+          {
+            "node": "Spreadsheet File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spreadsheet File": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Chunk (AR)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Chunk (AR)": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Extract Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Embedding": {
+      "main": [
+        [
+          {
+            "node": "Ensure Collection (Qdrant)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upsert to Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "workflowVersion": 1
+  }
+}
